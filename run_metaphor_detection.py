@@ -18,6 +18,8 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 from data_utils import read_examples_from_file, convert_examples_to_features
 from modeling_roberta_metaphor import RobertaForMetaphorDetection
+import pickle as pkl
+
 
 from transformers import (
     WEIGHTS_NAME,
@@ -176,6 +178,10 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
                 )  # XLM and RoBERTa don"t use segment_ids
 
             outputs = model(**inputs)
+
+            with open("attention.pkl", "ab") as fout:
+                pkl.dump(outputs[-1][-1], fout, protocol=pkl.HIGHEST_PROTOCOL) 
+            
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
 
             if args.n_gpu > 1:
@@ -668,6 +674,7 @@ def main():
         do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
+    config.output_attentions=True
     model = RobertaForMetaphorDetection.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
