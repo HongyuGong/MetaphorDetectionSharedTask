@@ -178,10 +178,7 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
                 )  # XLM and RoBERTa don"t use segment_ids
 
             outputs = model(**inputs)
-
-            with open("attention.pkl", "ab") as fout:
-                pkl.dump(outputs[-1][-1], fout, protocol=pkl.HIGHEST_PROTOCOL) 
-            
+                        
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
 
             if args.n_gpu > 1:
