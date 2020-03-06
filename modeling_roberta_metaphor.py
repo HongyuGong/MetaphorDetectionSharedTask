@@ -23,10 +23,10 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        
+        config.output_attentions=True
         self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier = nn.Linear(config.hidden_size + 1, config.num_labels)
 
         self.init_weights()
 
@@ -80,12 +80,15 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-
+        
         sequence_output = outputs[0]
-
         sequence_output = self.dropout(sequence_output)
+        #append the pos tags, the attention weights and any other term you want to append 
+        attention_output = torch.mean(outputs[2][-1], dim=1)
+        #torch.div(attention_output[0][:, 4].view(len(attention_output[0][:, 4]), 1), attention_output[0]).mean()
+        sum_attention = torch.sum(attention_output, dim = 1)
+        sequence_output = torch.cat((sequence_output, sum_attention.view(sum_attention.shape[0], sum_attention.shape[1], 1)), 2)
         logits = self.classifier(sequence_output)
-
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
