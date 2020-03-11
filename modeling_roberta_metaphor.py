@@ -26,7 +26,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         config.output_attentions=True
         self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size + 1, config.num_labels)
+        self.classifier = nn.Linear(config.hidden_size + 128, config.num_labels)
 
         self.init_weights()
 
@@ -84,10 +84,14 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         sequence_output = outputs[0]
         sequence_output = self.dropout(sequence_output)
         #append the pos tags, the attention weights and any other term you want to append 
-        attention_output = torch.mean(outputs[2][-1], dim=1)
+        attention_output = torch.mean(outputs[2][0], dim=1)
+        for i in range(1, len(outputs[2])):
+            attention_output = attention_output + torch.mean(outputs[2][i], dim=1)
         #torch.div(attention_output[0][:, 4].view(len(attention_output[0][:, 4]), 1), attention_output[0]).mean()
-        sum_attention = torch.sum(attention_output, dim = 1)
-        sequence_output = torch.cat((sequence_output, sum_attention.view(sum_attention.shape[0], sum_attention.shape[1], 1)), 2)
+        #sum_attention = torch.sum(attention_output, dim = 1)
+        #sequence_output = torch.cat((sequence_output, sum_attention.view(sum_attention.shape[0], sum_attention.shape[1], 1)), 2)
+        sequence_output = torch.cat((sequence_output, attention_output), 2)
+        print(sequence_output.shape)
         logits = self.classifier(sequence_output)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
