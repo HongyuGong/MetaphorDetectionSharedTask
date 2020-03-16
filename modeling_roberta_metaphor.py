@@ -90,8 +90,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         #torch.div(attention_output[0][:, 4].view(len(attention_output[0][:, 4]), 1), attention_output[0]).mean()
         #sum_attention = torch.sum(attention_output, dim = 1)
         #sequence_output = torch.cat((sequence_output, sum_attention.view(sum_attention.shape[0], sum_attention.shape[1], 1)), 2)
+        attention_output = attention_output.permute(0, 2, 1)
         sequence_output = torch.cat((sequence_output, attention_output), 2)
-        print(sequence_output.shape)
         logits = self.classifier(sequence_output)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
