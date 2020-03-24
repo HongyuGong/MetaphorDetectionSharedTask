@@ -16,8 +16,9 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from data_utils import read_examples_from_file, convert_examples_to_features
+from data_utils import read_examples_from_file, convert_examples_to_features, read_pos_tags
 from modeling_roberta_metaphor import RobertaForMetaphorDetection
+
 
 from transformers import (
     WEIGHTS_NAME,
@@ -169,7 +170,8 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3], "class_weights": weights}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "pos_ids": batch[3], \
+                      "labels": batch[4], "class_weights": weights}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
@@ -294,18 +296,18 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
 
         with torch.no_grad():
             if mode == "test":
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": None}
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "pos_ids": batch[3], "labels": None}
             else:
                 weights = torch.FloatTensor(class_weights).to(args.device)
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], \
-                          "labels": batch[3], "class_weights": weights}
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "pos_ids": batch[3], \
+                          "labels": batch[4], "class_weights": weights}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
                 )  # XLM and RoBERTa don"t use segment_ids
             outputs = model(**inputs)
             if mode == "test":
-                logits = outputs
+                logits = outputs[0]
             else:
                 tmp_eval_loss, logits = outputs[:2]               
 
@@ -316,35 +318,23 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
         nb_eval_steps += 1
         if preds is None:
             preds = logits.detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+            if inputs["labels"] is not None:
+                out_label_ids = inputs["labels"].detach().cpu().numpy()
+            else:
+                out_label_ids = batch[4].detach().cpu().numpy()
         else:
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            if inputs["labels"] is not None:
+                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            else:
+                out_label_ids = np.append(out_label_ids, batch[4].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
     preds = np.argmax(preds, axis=2)
 
-    """
-    out_label_list = [[] for _ in range(out_label_ids.shape[0])]
-    preds_list = [[] for _ in range(out_label_ids.shape[0])]
-
-    for i in range(out_label_ids.shape[0]):
-        for j in range(out_label_ids.shape[1]):
-            if out_label_ids[i, j] != pad_token_label_id:
-                #out_label_list[i].append(label_map[out_label_ids[i][j]])
-                #preds_list[i].append(label_map[preds[i][j]])
-                out_label_list[i].append(out_label_ids[i][j])
-                preds_list[i].append(preds[i][j])
-
-    results = {
-        "loss": eval_loss,
-        "precision": precision_score(out_label_list, preds_list),
-        "recall": recall_score(out_label_list, preds_list),
-        "f1": f1_score(out_label_list, preds_list),
-    }
-    """
-    
+    out_label_set = set()
     out_label_list = []
+    pred_label_set = set()
     flat_preds_list = []
     preds_list = [[] for _ in range(out_label_ids.shape[0])]
     for i in range(out_label_ids.shape[0]):
@@ -355,16 +345,24 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
                 flat_preds_list.append(preds[i][j])
                 # nested
                 preds_list[i].append(preds[i][j])
-    results = {
-        "loss": eval_loss,
-        "precision": precision_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-        "recall": recall_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-        "f1": f1_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-    }
+                # check label set
+                out_label_set.add(out_label_ids[i][j])
+                pred_label_set.add(preds[i][j])
+
+    results = None
     if mode != "test":
+        results = {
+            "loss": eval_loss,
+            "precision": precision_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
+            "recall": recall_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
+            "f1": f1_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
+    }
         logger.info("***** Eval results *****")
         for key in sorted(results.keys()):
             logger.info("  %s = %s", key, str(results[key]))
+    else:
+        print("out_label_set: {}".format(out_label_set))
+        print("pred_label_set: {}".format(pred_label_set))
     return results, preds_list
 
 
@@ -373,9 +371,13 @@ def convert_features_to_dataset(features):
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+    all_pos_ids = torch.tensor([f.pos_ids for f in features], dtype=torch.long)
     all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
 
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    # debug
+    #print("all_label_ids: {}".format(features[0].label_ids))
+
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_pos_ids, all_label_ids)
     return dataset
 
 
@@ -410,6 +412,8 @@ def load_and_cache_examples(args, tokenizer, pad_token_label_id, mode):
         features = torch.load(cached_features_file)
     else:
         logger.info("Creating features from dataset file at %s", args.data_dir)
+        # create pos vocab
+        pos_vocab = read_pos_tags(args.data_dir)
         examples = read_examples_from_file(args.data_dir, mode)
         features = convert_examples_to_features(
             examples,
@@ -427,11 +431,14 @@ def load_and_cache_examples(args, tokenizer, pad_token_label_id, mode):
             # pad on the left for xlnet
             pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
             pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
+            pos_vocab=pos_vocab,
+            pad_pos_id=0,
             pad_token_label_id=pad_token_label_id,
         )
         if args.local_rank in [-1, 0]:
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
+        sys.exit(0)
 
     if args.local_rank == 0 and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
@@ -598,6 +605,12 @@ def main():
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
     parser.add_argument("--server_port", type=str, default="", help="For distant debugging.")
+    # feature parameters
+    parser.add_argument("--use_init_embed", action="store_true", help="classifier compares initial and contextualized embedding")
+    parser.add_argument("--use_pos", action="store_true", help="classifier uses pos embedding")
+    parser.add_argument("--pos_vocab_size", type=int, default=43, help="Num of POS tags")
+    parser.add_argument("--pos_dim", type=int, default=8, help="Dimension of POS embedding")
+    
     args = parser.parse_args()
 
     if (
@@ -661,8 +674,7 @@ def main():
     config = config_class.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
         num_labels=2,
-        cache_dir=args.cache_dir if args.cache_dir else None,
-    )
+        cache_dir=args.cache_dir if args.cache_dir else None)
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case,
@@ -673,7 +685,10 @@ def main():
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        )
+        use_init_embed=args.use_init_embed,
+        use_pos=args.use_pos,
+        pos_vocab_size=args.pos_vocab_size,
+        pos_dim=args.pos_dim)
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
     model.to(args.device)
@@ -693,7 +708,11 @@ def main():
     # Predict/Test (without ground truth labels)
     if args.do_predict and args.local_rank in [-1, 0]:
         tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
-        model = RobertaForMetaphorDetection.from_pretrained(args.output_dir)
+        model = RobertaForMetaphorDetection.from_pretrained(args.output_dir,
+                                                            use_init_embed=args.use_init_embed,
+                                                            use_pos=args.use_pos,
+                                                            pos_vocab_size=args.pos_vocab_size,
+                                                            pos_dim=args.pos_dim)
         model.to(args.device)
 
         test_dataset = load_and_cache_examples(args, tokenizer, pad_token_label_id, mode="test")

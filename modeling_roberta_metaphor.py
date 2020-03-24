@@ -20,13 +20,35 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config):
+    def __init__(self, config, use_init_embed, use_pos, pos_vocab_size=20, pos_dim=6):
         super().__init__(config)
         self.num_labels = config.num_labels
-        
+        self.use_init_embed = use_init_embed
+        self.use_pos = use_pos
+        #self.pos_vocab_size = config.pos_vocab_size
+        #self.pos_dim = config.pos_dim
+
+        # semantic embedding from RoBERTa
         self.roberta = RobertaModel(config)
+        # pos embedding
+        if use_pos:
+            self.pos_emb = nn.Embedding(pos_vocab_size, pos_dim)
+            self.pos_emb.weight.data.uniform_(-1, 1)
+        # dropout
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        # classifier
+        logger.info("hidden_size: {}, pos_dim: {}".format(config.hidden_size, pos_dim))
+        # RoBERTa embedding
+        clf_dim = config.hidden_size
+        # Feature: init_embed 
+        if use_init_embed:
+            clf_dim += config.hidden_size
+        # Feature: POS_embed
+        if use_pos:
+            clf_dim += pos_dim
+
+        logger.info("classifier dim: {}".format(clf_dim))
+        self.classifier = nn.Linear(clf_dim, config.num_labels)
 
         self.init_weights()
 
@@ -40,6 +62,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
+        pos_ids=None,
         class_weights=[1.0, 1.0]
     ):
         r"""
@@ -71,6 +94,12 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         outputs = model(input_ids, labels=labels)
         loss, scores = outputs[:2]
         """
+        sequence_input = self.roberta.embeddings(
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds
+        )
 
         outputs = self.roberta(
             input_ids,
@@ -80,11 +109,21 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-
         sequence_output = outputs[0]
 
-        sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
+        if self.use_pos:
+            pos_output = self.pos_emb(pos_ids)
+        # sequence_output as a feature
+        sequence_feature = sequence_output
+        # sequence_input as a feature
+        if self.use_init_embed:
+            sequence_feature = torch.cat((sequence_feature, sequence_input), dim=-1)
+        # POS as a feature
+        if self.use_pos:
+            sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
+        # dropout
+        sequence_feature = self.dropout(sequence_feature)
+        logits = self.classifier(sequence_feature)
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
