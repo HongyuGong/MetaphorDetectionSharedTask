@@ -92,13 +92,14 @@ def convert_examples_to_features(
             logger.info("Writing example %d of %d", eid, len(examples))
         tokens = []
         label_ids = []
+
         for (word, label) in zip(example.words, example.labels):
             # a word might be split into multiple tokens
             word_tokens = tokenizer.tokenize(word)
             tokens += list(word_tokens)
             # Use the real label id for the first token of the word,
             # and padding ids for the remaining tokens
-            label_ids += [label] + [pad_token_label_id] * (len(word_tokens)-1)
+            label_ids += [label] + [-300] * (len(word_tokens)-1)
         sent_lens.append(len(tokens))
         
         # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
