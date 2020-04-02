@@ -319,10 +319,12 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
         nb_eval_steps += 1
         if preds is None:
             preds = logits.detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+            out_label_ids = inputs["labels"].detach().cpu().numpy().clone()
+            out_label_ids[out_label_ids==-300] = -100
         else:
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0).clone()
+            out_label_ids[out_label_ids==-300] = -100
 
     eval_loss = eval_loss / nb_eval_steps
     preds = np.argmax(preds, axis=2)
