@@ -3,6 +3,7 @@ import logging
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
+import torch.nn.functional as F
 
 from transformers.configuration_roberta import RobertaConfig
 from transformers.file_utils import add_start_docstrings, add_start_docstrings_to_callable
@@ -48,7 +49,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             clf_dim += pos_dim
 
         logger.info("classifier dim: {}".format(clf_dim))
-        self.classifier = nn.Linear(clf_dim, config.num_labels)
+        self.classifier = nn.Linear(clf_dim, clf_dim/2)
+        self.classifier2 = nn.Linear(clf_dim, 2)
 
         self.init_weights()
 
@@ -123,8 +125,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
         # dropout
         sequence_feature = self.dropout(sequence_feature)
-        logits = self.classifier(sequence_feature)
-
+        hidden_output = F.leaky_relu(self.classifier(sequence_feature))
+        logits = self.classifier2(hidden_output)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
