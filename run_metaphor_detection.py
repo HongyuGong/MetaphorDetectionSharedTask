@@ -268,7 +268,7 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
 
     #if args.local_rank in [-1, 0]:
     #    tb_writer.close()
-
+    print("\n\nThe best score is:",best_score)
     return global_step, tr_loss / global_step
 
 
