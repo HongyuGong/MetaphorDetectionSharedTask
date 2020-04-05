@@ -50,7 +50,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
 
         logger.info("classifier dim: {}".format(clf_dim))
         self.classifier = nn.Linear(clf_dim, 1024)
-        self.classifier2 = nn.Linear(clf_dim, 2)
+        self.classifier2 = nn.Linear(1024, 2)
 
         self.init_weights()
 
