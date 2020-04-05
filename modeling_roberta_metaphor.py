@@ -96,17 +96,6 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         outputs = model(input_ids, labels=labels)
         loss, scores = outputs[:2]
         """
-        sequence_input = self.roberta.embeddings(
-            input_ids=input_ids,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            inputs_embeds=inputs_embeds
-        )
-        print(len(sequence_input))
-        print(sequence_input[0].shape)
-        print(len(sequence_input[2]))
-        print(sequence_input[2][0].shape)
-        print(sequence_input[2][1].shape)
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
@@ -115,8 +104,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-        sequence_output = outputs[0]
-
+        sequence_output = torch.cat((outputs[2][24], outputs[2][24], outputs[2][24], outputs[2][24]), dim=2)
+        sequence_input = outputs[2][0]
         if self.use_pos:
             pos_output = self.pos_emb(pos_ids)
         # sequence_output as a feature
