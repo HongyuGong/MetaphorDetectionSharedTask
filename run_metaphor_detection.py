@@ -680,6 +680,8 @@ def main():
         do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
+    config.output_hidden_states=True
+    config.output_attentions=True
     model = RobertaForMetaphorDetection.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),

@@ -40,7 +40,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         # classifier
         logger.info("hidden_size: {}, pos_dim: {}".format(config.hidden_size, pos_dim))
         # RoBERTa embedding
-        clf_dim = config.hidden_size
+        clf_dim = 4*config.hidden_size
         # Feature: init_embed 
         if use_init_embed:
             clf_dim += config.hidden_size
@@ -49,7 +49,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             clf_dim += pos_dim
 
         logger.info("classifier dim: {}".format(clf_dim))
-        self.classifier = nn.Linear(clf_dim, clf_dim/2)
+        self.classifier = nn.Linear(clf_dim, clf_dim)
         self.classifier2 = nn.Linear(clf_dim, 2)
 
         self.init_weights()
@@ -102,7 +102,11 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             position_ids=position_ids,
             inputs_embeds=inputs_embeds
         )
-
+        print(len(sequence_input))
+        print(sequence_input[0].shape)
+        print(len(sequence_input[2]))
+        print(sequence_input[2][0].shape)
+        print(sequence_input[2][1].shape)
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
