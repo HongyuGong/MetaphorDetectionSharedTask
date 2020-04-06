@@ -104,7 +104,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-        sequence_output = torch.cat((outputs[2][24], outputs[2][24], outputs[2][24], outputs[2][24]), dim=2)
+        sequence_output = torch.cat((outputs[2][24], outputs[2][23], outputs[2][22], outputs[2][21]), dim=2)
         sequence_input = outputs[2][0]
         if self.use_pos:
             pos_output = self.pos_emb(pos_ids)
