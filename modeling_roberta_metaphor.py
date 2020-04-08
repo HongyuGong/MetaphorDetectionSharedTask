@@ -49,8 +49,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             clf_dim += pos_dim
 
         logger.info("classifier dim: {}".format(clf_dim))
-        self.classifier = nn.Linear(clf_dim, clf_dim)
-        self.classifier2 = nn.Linear(clf_dim, 2)
+        self.classifier = nn.Linear(clf_dim, 2)
+        #self.classifier2 = nn.Linear(clf_dim, 2)
 
         self.init_weights()
 
@@ -118,8 +118,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
         # dropout
         sequence_feature = self.dropout(sequence_feature)
-        hidden_output = F.leaky_relu(self.classifier(sequence_feature))
-        logits = self.classifier2(hidden_output)
+        #hidden_output = F.leaky_relu(self.classifier(sequence_feature))
+        logits = self.classifier(sequence_feature)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
