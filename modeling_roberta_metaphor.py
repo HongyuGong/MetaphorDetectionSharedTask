@@ -184,9 +184,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         hidden_output = self.charCNN(hidden_output)
         hidden_output = hidden_output.permute((0, 2, 1, 3))
         hidden_output = hidden_output.reshape((hidden_output.size(0), hidden_output.size(1), hidden_output.size(2)*hidden_output.size(3)))
-        print(hidden_output.shape)
         logits = self.classifier2(hidden_output)
-        print(logits.shape)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
