@@ -322,18 +322,18 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
         if preds is None:
             preds = logits.detach().cpu().numpy()
             if inputs["labels"] is not None:
-                out_label_ids = inputs["labels"].detach().cpu().numpy().clone()
+                out_label_ids = inputs["labels"].detach().cpu().numpy().copy()
                 out_label_ids[out_label_ids==-300] = -100
             else:
-                out_label_ids = batch[4].detach().cpu().numpy().clone()
+                out_label_ids = batch[4].detach().cpu().numpy().copy()
                 out_label_ids[out_label_ids==-300] = -100
         else:
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
             if inputs["labels"] is not None:
-                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0).clone()
+                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0).copy()
                 out_label_ids[out_label_ids==-300] = -100
             else:
-                out_label_ids = np.append(out_label_ids, batch[4].detach().cpu().numpy(), axis=0).clone()
+                out_label_ids = np.append(out_label_ids, batch[4].detach().cpu().numpy(), axis=0).copy()
                 out_label_ids[out_label_ids==-300] = -100
 
     eval_loss = eval_loss / nb_eval_steps

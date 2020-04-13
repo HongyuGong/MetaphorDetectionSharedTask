@@ -111,7 +111,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         num_filters_char = [512, 512, 1024, 1024]
         self.charCNN = CharCNN(clf_dim, clf_dim, num_filters=num_filters_char)
 
-        self.classifier2 = nn.Linear(3*num_filters_char[3], 2)
+        self.classifier2 = nn.Linear(4*num_filters_char[3], 2)
 
         self.init_weights()
 
