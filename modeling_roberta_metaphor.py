@@ -16,7 +16,7 @@ from transformers.modeling_roberta import RobertaEmbeddings, RobertaModel, \
 logger = logging.getLogger(__name__)
 
 class CNNSubNetwork(nn.Module):
-    def __init__(self, in_channel, num_filters, emb_size, window_sizes=(1, 32, 64), nonlin=F.leaky_relu):
+    def __init__(self, in_channel, num_filters, emb_size, window_sizes=(1, 3, 7, 13), nonlin=F.leaky_relu):
         super(CNNSubNetwork, self).__init__()
 
         self.convs = nn.ModuleList([
@@ -45,12 +45,12 @@ class CNNSubNetwork(nn.Module):
 
 class CharCNN(nn.Module):
 
-    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(1, 15, 31), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
+    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(1, 3, 7, 13), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
         super(CharCNN, self).__init__()
         self.conv1 = CNNSubNetwork(1, num_filters=num_filters[0], emb_size=embedding_dim, window_sizes=window_sizes, nonlin=nonlin)
-        self.conv2 = CNNSubNetwork(3, num_filters=num_filters[1], emb_size=num_filters[0], window_sizes=window_sizes, nonlin=nonlin)
-        self.conv3 = CNNSubNetwork(3, num_filters=num_filters[2], emb_size=num_filters[1], window_sizes=window_sizes, nonlin=nonlin)
-        self.conv4 = CNNSubNetwork(3, num_filters=num_filters[3], emb_size=num_filters[2], window_sizes=window_sizes, nonlin=nonlin)
+        self.conv2 = CNNSubNetwork(4, num_filters=num_filters[1], emb_size=num_filters[0], window_sizes=window_sizes, nonlin=nonlin)
+        self.conv3 = CNNSubNetwork(4, num_filters=num_filters[2], emb_size=num_filters[1], window_sizes=window_sizes, nonlin=nonlin)
+        self.conv4 = CNNSubNetwork(4, num_filters=num_filters[3], emb_size=num_filters[2], window_sizes=window_sizes, nonlin=nonlin)
         #self.fc = nn.Linear(num_filters[3] * len(window_sizes), ouput_dim)        
         self.nonlin = nonlin
         self.nonlin_dense = nonlin_dense
@@ -108,7 +108,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
 
         logger.info("classifier dim: {}".format(clf_dim))
         self.classifier = nn.Linear(clf_dim, clf_dim)
-        num_filters_char = [512, 512, 512, 1024]
+        num_filters_char = [512, 512, 1024, 1024]
         self.charCNN = CharCNN(clf_dim, clf_dim, num_filters=num_filters_char)
 
         self.classifier2 = nn.Linear(3*num_filters_char[3], 2)
