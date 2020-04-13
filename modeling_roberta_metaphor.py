@@ -16,7 +16,7 @@ from transformers.modeling_roberta import RobertaEmbeddings, RobertaModel, \
 logger = logging.getLogger(__name__)
 
 class CNNSubNetwork(nn.Module):
-    def __init__(self, in_channel, num_filters, emb_size, window_sizes=(3, 5, 7), nonlin=F.leaky_relu):
+    def __init__(self, in_channel, num_filters, emb_size, window_sizes=(1, 32, 64), nonlin=F.leaky_relu):
         super(CNNSubNetwork, self).__init__()
 
         self.convs = nn.ModuleList([
@@ -108,10 +108,10 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
 
         logger.info("classifier dim: {}".format(clf_dim))
         self.classifier = nn.Linear(clf_dim, clf_dim)
-        num_filters_char = [64, 64, 64, 64]
+        num_filters_char = [512, 512, 512, 512]
         self.charCNN = CharCNN(clf_dim, clf_dim, num_filters=num_filters_char)
 
-        self.classifier2 = nn.Linear(clf_dim, 2)
+        self.classifier2 = nn.Linear(3*num_filters_char[3], 2)
 
         self.init_weights()
 
@@ -180,14 +180,13 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
         # dropout
         sequence_feature = self.dropout(sequence_feature)
-        
         hidden_output = F.leaky_relu(self.classifier(sequence_feature))
-        
-        #hidden_output = self.charCNN(hidden_output)
-        #hidden_output = hidden_output.permute((0, 2, 1, 3))
-        #hidden_output = hidden_output.reshape((hidden_output.size(0), hidden_output.size(1), hidden_output.size(2)*hidden_output.size(3)))
-        
+        hidden_output = self.charCNN(hidden_output)
+        hidden_output = hidden_output.permute((0, 2, 1, 3))
+        hidden_output = hidden_output.reshape((hidden_output.size(0), hidden_output.size(1), hidden_output.size(2)*hidden_output.size(3)))
+        print(hidden_output.shape)
         logits = self.classifier2(hidden_output)
+        print(logits.shape)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
