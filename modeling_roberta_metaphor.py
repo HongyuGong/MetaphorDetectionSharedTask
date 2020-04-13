@@ -98,7 +98,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         # classifier
         logger.info("hidden_size: {}, pos_dim: {}".format(config.hidden_size, pos_dim))
         # RoBERTa embedding
-        clf_dim = 4*config.hidden_size
+        clf_dim = config.hidden_size
         # Feature: init_embed 
         if use_init_embed:
             clf_dim += config.hidden_size
@@ -165,7 +165,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-        sequence_output = torch.cat((outputs[2][24], outputs[2][23], outputs[2][22], outputs[2][21]), dim=2)
+        #sequence_output = torch.cat((outputs[2][24], outputs[2][23], outputs[2][22], outputs[2][21]), dim=2)
+        sequence_output = (outputs[2][24] + outputs[2][23] + outputs[2][22] + outputs[2][21])/4
         #sequence_output = outputs[2][24]
         sequence_input = outputs[2][0]
         if self.use_pos:
