@@ -273,6 +273,8 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
 
 
 def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode):
+    if args.device.type == 'cuda':
+                torch.cuda.empty_cache()
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
     # Note that DistributedSampler samples randomly
     eval_sampler = SequentialSampler(eval_dataset) if args.local_rank == -1 else DistributedSampler(eval_dataset)
