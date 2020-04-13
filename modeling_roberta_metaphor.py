@@ -45,7 +45,7 @@ class CNNSubNetwork(nn.Module):
 
 class CharCNN(nn.Module):
 
-    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(5, 7, 9), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
+    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(1, 32, 64), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
         super(CharCNN, self).__init__()
         self.conv1 = CNNSubNetwork(1, num_filters=num_filters[0], emb_size=embedding_dim, window_sizes=window_sizes, nonlin=nonlin)
         self.conv2 = CNNSubNetwork(3, num_filters=num_filters[1], emb_size=num_filters[0], window_sizes=window_sizes, nonlin=nonlin)
@@ -98,7 +98,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         # classifier
         logger.info("hidden_size: {}, pos_dim: {}".format(config.hidden_size, pos_dim))
         # RoBERTa embedding
-        clf_dim = config.hidden_size
+        clf_dim = 4*config.hidden_size
         # Feature: init_embed 
         if use_init_embed:
             clf_dim += config.hidden_size
@@ -108,7 +108,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
 
         logger.info("classifier dim: {}".format(clf_dim))
         self.classifier = nn.Linear(clf_dim, clf_dim)
-        num_filters_char = [512, 512, 512, 512]
+        num_filters_char = [512, 512, 1024, 1024]
         self.charCNN = CharCNN(clf_dim, clf_dim, num_filters=num_filters_char)
 
         self.classifier2 = nn.Linear(3*num_filters_char[3], 2)
@@ -165,8 +165,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-        #sequence_output = torch.cat((outputs[2][24], outputs[2][23], outputs[2][22], outputs[2][21]), dim=2)
-        sequence_output = outputs[2][24]
+        sequence_output = torch.cat((outputs[2][24], outputs[2][23], outputs[2][22], outputs[2][21]), dim=2)
+        #sequence_output = outputs[2][24]
         sequence_input = outputs[2][0]
         if self.use_pos:
             pos_output = self.pos_emb(pos_ids)
