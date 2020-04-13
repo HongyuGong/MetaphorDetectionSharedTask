@@ -195,8 +195,8 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         #sequence_output = torch.cat((sequence_output, attention_output), 2)
         i = 0
         j = 0
-        while i < sequence_output.shape[0]:
-            while j < sequence_output.shape[1]:
+        while i < sequence_feature.shape[0]:
+            while j < sequence_feature.shape[1]:
                 if attention_mask[i, j] == 0:
                     break
                 else:
@@ -204,15 +204,15 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
                         j = j+1
                         continue
                     else:
-                        val = sequence_output[i, j]
+                        val = sequence_feature[i, j]
                         current = j + 1
                         count = 0
                         while labels[i, current] == -300:
                             count = count + 1
-                            val = val + sequence_output[i, current]
+                            val = val + sequence_feature[i, current]
                             current = current + 1
                         if count != 0:
-                            sequence_output[i, j] = val/count
+                            sequence_feature[i, j] = val/count
                             j = current-1
                 j = j + 1
             i = i + 1
