@@ -180,7 +180,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         if self.use_pos:
             sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
         # dropout
-        sequence_feature = self.dropout(sequence_feature)
+        
         
         # sequence_output = outputs[0]
         # sequence_output = self.dropout(sequence_output)
@@ -219,6 +219,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         labels_clone = labels.clone()
         labels_clone[labels_clone==-300] = -100
         
+        sequence_feature = self.dropout(sequence_feature)
         hidden_output = F.leaky_relu(self.classifier(sequence_feature))
         hidden_output = self.charCNN(hidden_output)
         hidden_output = hidden_output.permute((0, 2, 1, 3))
