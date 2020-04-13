@@ -50,7 +50,7 @@ class CharCNN(nn.Module):
         self.conv1 = CNNSubNetwork(1, num_filters=num_filters[0], emb_size=embedding_dim, window_sizes=window_sizes, nonlin=nonlin)
         self.conv2 = CNNSubNetwork(3, num_filters=num_filters[1], emb_size=num_filters[0], window_sizes=window_sizes, nonlin=nonlin)
         self.conv3 = CNNSubNetwork(3, num_filters=num_filters[2], emb_size=num_filters[1], window_sizes=window_sizes, nonlin=nonlin)
-        self.conv4 = CNNSubNetwork(3, num_filters=num_filters[3], emb_size=num_filters[3], window_sizes=window_sizes, nonlin=nonlin)
+        self.conv4 = CNNSubNetwork(3, num_filters=num_filters[3], emb_size=num_filters[2], window_sizes=window_sizes, nonlin=nonlin)
         #self.fc = nn.Linear(num_filters[3] * len(window_sizes), ouput_dim)        
         self.nonlin = nonlin
         self.nonlin_dense = nonlin_dense
@@ -108,7 +108,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
 
         logger.info("classifier dim: {}".format(clf_dim))
         self.classifier = nn.Linear(clf_dim, clf_dim)
-        num_filters_char = [512, 512, 1024, 1024]
+        num_filters_char = [512, 512, 512, 1024]
         self.charCNN = CharCNN(clf_dim, clf_dim, num_filters=num_filters_char)
 
         self.classifier2 = nn.Linear(3*num_filters_char[3], 2)
