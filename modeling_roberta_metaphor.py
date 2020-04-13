@@ -181,11 +181,50 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
         # dropout
         sequence_feature = self.dropout(sequence_feature)
+        
+        # sequence_output = outputs[0]
+        # sequence_output = self.dropout(sequence_output)
+        #append the pos tags, the attention weights and any other term you want to append 
+        #attention_output = torch.mean(outputs[2][0], dim=1)
+        #for i in range(1, len(outputs[2])):
+        #    attention_output = attention_output + torch.mean(outputs[2][i], dim=1)
+        #torch.div(attention_output[0][:, 4].view(len(attention_output[0][:, 4]), 1), attention_output[0]).mean()
+        #sum_attention = torch.sum(attention_output, dim = 1)
+        #sequence_output = torch.cat((sequence_output, sum_attention.view(sum_attention.shape[0], sum_attention.shape[1], 1)), 2)
+        #attention_output = attention_output.permute(0, 2, 1)
+        #sequence_output = torch.cat((sequence_output, attention_output), 2)
+        i = 0
+        j = 0
+        while i < sequence_output.shape[0]:
+            while j < sequence_output.shape[1]:
+                if attention_mask[i, j] == 0:
+                    break
+                else:
+                    if labels[i, j] == -100:
+                        j = j+1
+                        continue
+                    else:
+                        val = sequence_output[i, j]
+                        current = j + 1
+                        count = 0
+                        while labels[i, current] == -300:
+                            count = count + 1
+                            val = val + sequence_output[i, current]
+                            current = current + 1
+                        if count != 0:
+                            sequence_output[i, j] = val/count
+                            j = current-1
+                j = j + 1
+            i = i + 1
+        labels_clone = labels.clone()
+        labels_clone[labels_clone==-300] = -100
+        
         hidden_output = F.leaky_relu(self.classifier(sequence_feature))
         hidden_output = self.charCNN(hidden_output)
         hidden_output = hidden_output.permute((0, 2, 1, 3))
         hidden_output = hidden_output.reshape((hidden_output.size(0), hidden_output.size(1), hidden_output.size(2)*hidden_output.size(3)))
         logits = self.classifier2(hidden_output)
+
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
@@ -193,10 +232,10 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             if attention_mask is not None:
                 active_loss = attention_mask.view(-1) == 1
                 active_logits = logits.view(-1, self.num_labels)[active_loss]
-                active_labels = labels.view(-1)[active_loss]
+                active_labels = labels_clone.view(-1)[active_loss]
                 loss = loss_fct(active_logits, active_labels)
             else:
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+                loss = loss_fct(logits.view(-1, self.num_labels), labels_clone.view(-1))
             outputs = (loss,) + outputs
 
         return outputs  # (loss), scores, (hidden_states), (attentions)

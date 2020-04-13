@@ -134,7 +134,7 @@ def convert_examples_to_features(
             pos_ids += [pos_vocab[pos]] + [pad_pos_id] * (len(word_tokens)-1)
             # Use the real label id for the first token of the word,
             # and padding ids for the remaining tokens
-            label_ids += [label] + [pad_token_label_id] * (len(word_tokens)-1)
+            label_ids += [label] + [-300] * (len(word_tokens)-1)
         sent_lens.append(len(tokens))
         
         # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
