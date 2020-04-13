@@ -15,6 +15,64 @@ from transformers.modeling_roberta import RobertaEmbeddings, RobertaModel, \
 
 logger = logging.getLogger(__name__)
 
+class CNNSubNetwork(nn.Module):
+    def __init__(self, in_channel, num_filters, emb_size, window_sizes=(3, 5, 7), nonlin=F.leaky_relu):
+        super(CNNSubNetwork, self).__init__()
+
+        self.convs = nn.ModuleList([
+            nn.Conv2d(in_channel, num_filters, (window_size, emb_size), padding = (int((window_size - 1)/2), 0))
+            for window_size in window_sizes
+        ])
+        # self.norms = nn.ModuleList([
+        #     nn.BatchNorm2d(num_filters)
+        #     for window_size in window_sizes
+        # ])
+        self.nonlin = nonlin
+
+    def forward(self, x):
+        xs = []
+        for conv_i in range(len(self.convs)):
+            conv = self.convs[conv_i]
+            # norm = self.norms[conv_i]
+            x2 = self.nonlin(conv(x))        # [B, F, T, 1]
+            x2 = torch.squeeze(x2, -1)  # [B, F, T]
+            x2 = x2.permute(0, 2, 1)    # [B, T, F]
+            x2 = torch.unsqueeze(x2, 1) # [B, 1, T, F]
+            xs.append(x2)
+            
+        x = torch.cat(xs, 1)            # [B, W, T, F]
+        return x
+
+class CharCNN(nn.Module):
+
+    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(5, 7, 9), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
+        super(CharCNN, self).__init__()
+        self.conv1 = CNNSubNetwork(1, num_filters=num_filters[0], emb_size=embedding_dim, window_sizes=window_sizes, nonlin=nonlin)
+        self.conv2 = CNNSubNetwork(3, num_filters=num_filters[1], emb_size=num_filters[0], window_sizes=window_sizes, nonlin=nonlin)
+        self.conv3 = CNNSubNetwork(3, num_filters=num_filters[2], emb_size=num_filters[1], window_sizes=window_sizes, nonlin=nonlin)
+        self.conv4 = CNNSubNetwork(3, num_filters=num_filters[3], emb_size=num_filters[3], window_sizes=window_sizes, nonlin=nonlin)
+        #self.fc = nn.Linear(num_filters[3] * len(window_sizes), ouput_dim)        
+        self.nonlin = nonlin
+        self.nonlin_dense = nonlin_dense
+        
+
+    def forward(self, x):
+        # embed = self.embedding(x) #[T, B, E]
+        # embed = embed.permute(1, 0, 2) #[B, T, E]
+        embed = torch.unsqueeze(x, 1) # [B, C, T, E] Add a channel dim.
+        x = self.conv1(embed)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        #x = nn.MaxPool2d(kernel_size=(x.size(2), 1))(x) 
+        #new = torch.zeros(x.shape[0], x.shape[1], 1, x.shape[3])
+        #for i in range(len(x_len)):
+        #    new[i] = torch.max(x[i, :, :x_len[i], :], dim = 1, keepdim=True)[0]
+        #use x_len here 
+        #x = new.view(new.size(0), -1).to(device)
+        #x = self.fc(x)
+        #x = self.nonlin_dense(x)
+        return x
 
 class RobertaForMetaphorDetection(BertPreTrainedModel):
     config_class = RobertaConfig
@@ -40,7 +98,7 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         # classifier
         logger.info("hidden_size: {}, pos_dim: {}".format(config.hidden_size, pos_dim))
         # RoBERTa embedding
-        clf_dim = 4*config.hidden_size
+        clf_dim = config.hidden_size
         # Feature: init_embed 
         if use_init_embed:
             clf_dim += config.hidden_size
@@ -50,7 +108,10 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
 
         logger.info("classifier dim: {}".format(clf_dim))
         self.classifier = nn.Linear(clf_dim, clf_dim)
-        self.classifier2 = nn.Linear(clf_dim, 2)
+        num_filters_char = [64, 64, 64, 64]
+        self.charCNN = CharCNN(clf_dim, clf_dim, num_filters=num_filters_char)
+
+        self.classifier2 = nn.Linear(3*num_filters_char[3], 2)
 
         self.init_weights()
 
@@ -120,7 +181,10 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         # dropout
         sequence_feature = self.dropout(sequence_feature)
         hidden_output = F.leaky_relu(self.classifier(sequence_feature))
-        logits = self.classifier(hidden_output)
+        hidden_output = self.charCNN(hidden_output)
+        hidden_output = hidden_output.permute((0, 2, 1, 3))
+        hidden_output = hidden_output.reshape((hidden_output.size(0), hidden_output.size(1), hidden_output.size(2)*hidden_output.size(3)))
+        logits = self.classifier2(hidden_output)
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
