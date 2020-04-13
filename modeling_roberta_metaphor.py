@@ -45,7 +45,7 @@ class CNNSubNetwork(nn.Module):
 
 class CharCNN(nn.Module):
 
-    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(1, 32, 64), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
+    def __init__(self, embedding_dim, ouput_dim, num_filters = [3, 3, 3, 3], window_sizes=(1, 15, 31), nonlin=F.leaky_relu, nonlin_dense = torch.sigmoid):
         super(CharCNN, self).__init__()
         self.conv1 = CNNSubNetwork(1, num_filters=num_filters[0], emb_size=embedding_dim, window_sizes=window_sizes, nonlin=nonlin)
         self.conv2 = CNNSubNetwork(3, num_filters=num_filters[1], emb_size=num_filters[0], window_sizes=window_sizes, nonlin=nonlin)
