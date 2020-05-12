@@ -1,4 +1,4 @@
-#IlliniMet: Illinois System for Metaphor Detection
+# IlliniMet: Illinois System for Metaphor Detection
 
 This is IlliMet model for metaphor detection participating in [The Second Workshop on Figurative Language Processing](https://competitions.codalab.org/competitions/22188). The model takes contextualized representation from the RoBERTa model to predict metaphors. Besides, POS and external linguistic features are explored and incorporated into the model.
 
@@ -12,16 +12,16 @@ Requirements:
 
 * [VARIABLE] in the instructions below refers to the variable names that can be defined by users.
 
-##1. Data Preparation
+## 1. Data Preparation
 
 Obtain the datasets (VUA or TOEFL). Extract from the train data the token ids, tokens, POS tags and metaphor labels, and save them to train_ids.txt, train_tokens.txt, train_pos.txt, and train_metaphor.txt respectively. These files are in such format that each row corresponds to one sentence, and each id/token/POS/label is separated by space in a row. Save VUA data to [DATA_DIR]/VUA/, and TOEFL data to [DATA_DIR]/TOEFL/.
 
 Process the test data in the same way as the train data, and save test_ids.txt, test_tokens.txt and test_pos.txt to the folder [DATA_DIR]/VUA/ or [DATA_DIR]/TOEFL/.
 
 
-##2. Feature Preparation
+## 2. Feature Preparation
 
-###(1) Prepare VUA features
+### (1) Prepare VUA features
 
 Download and unzip VUA feature files, i.e., naacl_flp_skll_train_datasets.zip and naacl_flp_skll_test_datasets.zip, from [Educational Testing Service GitHub repo](https://github.com/EducationalTestingService/metaphor/tree/master/VUA-shared-task). Adatpt features to the same format as input sentences.
 
@@ -45,7 +45,7 @@ python3 feature_data_helper.py
 --output_dir [DATA_DIR]/VUA/
 ```
 
-###(2) Prepare TOEFL features:
+### (2) Prepare TOEFL features:
 
 Download and unzip TOEFL feature files, i.e., toefl_skll_train_features.zip and toefl_skll_test_features_no_labels.zip [Educational Testing Service GitHub repo](https://github.com/EducationalTestingService/metaphor/tree/master/TOEFL-release). The 
 
@@ -70,9 +70,9 @@ python3 feature_data_helper.py
 ```
 
 
-##3. Train Model for Metaphor Detection
+## 3. Train Model for Metaphor Detection
 
-###(1) Train VUA Model
+### (1) Train VUA Model
 
 ```bash
 python3 run_metaphor_detection.py
@@ -109,7 +109,7 @@ python3 run_metaphor_detection.py
 * --use_features: whether to use external feature for classification
 
 
-###(2) Train TOEFL Model
+### (2) Train TOEFL Model
 
 ```bash
 python3 run_metaphor_detection.py
@@ -146,7 +146,7 @@ python3 run_metaphor_detection.py
 * --use_features: whether to use external feature for classification
 
 
-##4. Prediction
+## 4. Prediction
 
 VUA prediction from a single model
 
@@ -199,7 +199,7 @@ python3 run_metaphor_detection.py
 --feature_dim 215
 ```
 
-##5. Emsemble Prediction
+## 5. Emsemble Prediction
 
 Repeat step 4 to train multiple models using different random seeds. Ensemble method is adopted to make predictions by taking majority votes among multiple trained models. Put prediction outputs from multiple models into PRED_DIR/, and the ensemble method makes final predictions in FINAL_OUTPUT_DIR/.
 
