@@ -20,13 +20,49 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config):
+    def __init__(self, config, use_pos, pos_vocab_size=20, pos_dim=6,
+                 use_features=False, feature_dim=128):
         super().__init__(config)
         self.num_labels = config.num_labels
-        
+        #self.use_init_embed = use_init_embed
+        self.use_pos = use_pos
+        self.use_features = use_features
+        #self.pos_vocab_size = config.pos_vocab_size
+        #self.pos_dim = config.pos_dim
+
+        # semantic embedding from RoBERTa
         self.roberta = RobertaModel(config)
+        # project roberta embedding
+        #self.output_projector = nn.Linear(config.hidden_size, embed_dim)
+
+        # project init embedding
+        #if self.use_init_embed:
+        #    self.input_projector = nn.Linear(config.hidden_size, embed_dim)
+        
+        # pos embedding
+        if use_pos:
+            self.pos_emb = nn.Embedding(pos_vocab_size, pos_dim)
+            self.pos_emb.weight.data.uniform_(-1, 1)
+        
+        # dropout
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        # classifier
+        logger.info("hidden_size: {}, pos_dim: {}, feature_dim: {}".format(config.hidden_size,
+                                                                           pos_dim, feature_dim))
+        # reduced RoBERTa embedding
+        clf_dim = config.hidden_size
+        # Feature: init_embed 
+        #if use_init_embed:
+        #    clf_dim += config.hidden_size
+        # Feature: POS_embed
+        if use_pos:
+            clf_dim += pos_dim
+        # Feature: concreteness, topic, etc.
+        if use_features:
+            clf_dim += feature_dim
+
+        logger.info("classifier dim: {}".format(clf_dim))
+        self.classifier = nn.Linear(clf_dim, config.num_labels)
 
         self.init_weights()
 
@@ -40,37 +76,23 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
+        pos_ids=None,
+        biasdown_vectors=None,
+        biasup_vectors=None,
+        biasupdown_vectors=None,
+        corp_vectors=None,
+        topic_vectors=None,
+        verbnet_vectors=None,
+        wordnet_vectors=None,
         class_weights=[1.0, 1.0]
     ):
-        r"""
-        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
-            Labels for computing the token classification loss.
-            Indices should be in ``[0, ..., config.num_labels - 1]``.
-    Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.RobertaConfig`) and inputs:
-        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when ``labels`` is provided) :
-            Classification loss.
-        scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, config.num_labels)`)
-            Classification scores (before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-    Examples::
-        from transformers import RobertaTokenizer, RobertaForTokenClassification
-        import torch
-        tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
-        model = RobertaForTokenClassification.from_pretrained('roberta-base')
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        labels = torch.tensor([1] * input_ids.size(1)).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids, labels=labels)
-        loss, scores = outputs[:2]
-        """
+        sequence_input = self.roberta.embeddings(
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds
+        )
+        #proj_sequence_input = self.input_projector(sequence_input)
 
         outputs = self.roberta(
             input_ids,
@@ -80,11 +102,44 @@ class RobertaForMetaphorDetection(BertPreTrainedModel):
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
         )
-
         sequence_output = outputs[0]
+        #proj_sequence_output = self.output_projector(sequence_output)
 
-        sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
+        if self.use_pos:
+            pos_output = self.pos_emb(pos_ids)
+        # sequence_output as a feature
+        sequence_feature = sequence_output
+        # sequence_input as a feature
+        #if self.use_init_embed:
+        #    sequence_feature = torch.cat((sequence_input, sequence_feature), dim=-1)
+        # POS as a feature
+        if self.use_pos:
+            sequence_feature = torch.cat((sequence_feature, pos_output), dim=-1)
+        # External feature
+        if self.use_features:
+            """
+            if biasdown_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, biasdown_vectors), dim=-1)
+            if biasup_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, biasup_vectors), dim=-1)
+            if biasupdown_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, biasupdown_vectors), dim=-1)
+            if corp_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, corp_vectors), dim=-1)
+            if topic_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, topic_vectors), dim=-1)
+            if verbnet_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, verbnet_vectors), dim=-1)
+            if wordnet_vectors is not None:
+                sequence_feature = torch.cat((sequence_feature, wordnet_vectors), dim=-1)
+            """
+            external_feature = torch.cat((biasdown_vectors, biasup_vectors, biasupdown_vectors,
+                                          corp_vectors, topic_vectors, verbnet_vectors, wordnet_vectors), dim=-1)
+            sequence_feature = torch.cat((sequence_feature, external_feature), dim=-1)
+            
+        # dropout
+        sequence_feature = self.dropout(sequence_feature)
+        logits = self.classifier(sequence_feature)
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:

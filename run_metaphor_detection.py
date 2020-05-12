@@ -1,5 +1,5 @@
 """
-Token classification
+Train & Evaluate RoBERTa-Based Metaphor Detection Model
 """
 
 import argparse
@@ -10,14 +10,17 @@ import random
 import sys
 import numpy as np
 import torch
-#from seqeval.metrics import f1_score, precision_score, recall_score
+import pickle
 from sklearn.metrics import precision_score, recall_score, f1_score
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from data_utils import read_examples_from_file, convert_examples_to_features
+from data_utils import InputExample, InputFeatures, read_pos_tags
+from vua_data_helper import read_vua_examples_from_file, convert_vua_examples_to_features
+from toefl_data_helper import read_toefl_examples_from_file, convert_toefl_examples_to_features
 from modeling_roberta_metaphor import RobertaForMetaphorDetection
+
 
 from transformers import (
     WEIGHTS_NAME,
@@ -83,7 +86,7 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
         t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
     # Prepare optimizer and schedule (linear warmup and decay)
-    no_decay = ["bias", "LayerNorm.weight"]
+    no_decay = ["bias", "LayerNorm.weight", "classifier"]
     optimizer_grouped_parameters = [
         {
             "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
@@ -169,7 +172,10 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3], "class_weights": weights}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "pos_ids": batch[3], \
+                      "biasdown_vectors": batch[4], "biasup_vectors": batch[5], "biasupdown_vectors": batch[6], \
+                      "corp_vectors": batch[7], "topic_vectors": batch[8], "verbnet_vectors": batch[9], \
+                      "wordnet_vectors": batch[10], "labels": batch[11], "class_weights": weights}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
@@ -218,6 +224,11 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
                             except:
                                 flag = False
                                 logger.info("Fail to delete old model.")
+                            """
+                            # save threshold
+                            with open(args.output_dir+"/dev_results.pkl", "wb") as handle:
+                                pickle.dump(results, handle)
+                            """
                             # save model
                             output_dir = args.output_dir
                             if not os.path.exists(output_dir):
@@ -264,9 +275,6 @@ def train(args, train_dataset, dev_dataset, model, class_weights,
             train_iterator.close()
             break
 
-    #if args.local_rank in [-1, 0]:
-    #    tb_writer.close()
-
     return global_step, tr_loss / global_step
 
 
@@ -291,23 +299,29 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
     model.eval()
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         batch = tuple(t.to(args.device) for t in batch)
-
         with torch.no_grad():
             if mode == "test":
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": None}
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "pos_ids": batch[3], \
+                          "biasdown_vectors": batch[4], "biasup_vectors": batch[5], "biasupdown_vectors": batch[6], \
+                          "corp_vectors": batch[7], "topic_vectors": batch[8], "verbnet_vectors": batch[9], \
+                          "wordnet_vectors": batch[10], "labels": None}
             else:
                 weights = torch.FloatTensor(class_weights).to(args.device)
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], \
-                          "labels": batch[3], "class_weights": weights}
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "pos_ids": batch[3], \
+                          "biasdown_vectors": batch[4], "biasup_vectors": batch[5], "biasupdown_vectors": batch[6], \
+                          "corp_vectors": batch[7], "topic_vectors": batch[8], "verbnet_vectors": batch[9], \
+                          "wordnet_vectors": batch[10], "labels": batch[11], "class_weights": weights}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet"] else None
                 )  # XLM and RoBERTa don"t use segment_ids
             outputs = model(**inputs)
             if mode == "test":
-                logits = outputs
+                logits = outputs[0]
             else:
-                tmp_eval_loss, logits = outputs[:2]               
+                tmp_eval_loss, logits = outputs[:2]
+
+            #probs = torch.nn.functional.softmax(logits, dim=-1)
 
             if args.n_gpu > 1 and mode != "test" :
                 tmp_eval_loss = tmp_eval_loss.mean()  # mean() to average on multi-gpu parallel evaluating
@@ -316,55 +330,43 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
         nb_eval_steps += 1
         if preds is None:
             preds = logits.detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+            #preds = probs.detach().cpu().numpy()
+            if inputs["labels"] is not None:
+                out_label_ids = inputs["labels"].detach().cpu().numpy()
+            else:
+                out_label_ids = batch[11].detach().cpu().numpy()
         else:
+            #preds = np.append(preds, probs.detach().cpu().numpy(), axis=0)
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            if inputs["labels"] is not None:
+                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            else:
+                out_label_ids = np.append(out_label_ids, batch[11].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
+    # preds: (batch_size, max_seq_len)
     preds = np.argmax(preds, axis=2)
-
-    """
-    out_label_list = [[] for _ in range(out_label_ids.shape[0])]
-    preds_list = [[] for _ in range(out_label_ids.shape[0])]
-
-    for i in range(out_label_ids.shape[0]):
-        for j in range(out_label_ids.shape[1]):
-            if out_label_ids[i, j] != pad_token_label_id:
-                #out_label_list[i].append(label_map[out_label_ids[i][j]])
-                #preds_list[i].append(label_map[preds[i][j]])
-                out_label_list[i].append(out_label_ids[i][j])
-                preds_list[i].append(preds[i][j])
-
-    results = {
-        "loss": eval_loss,
-        "precision": precision_score(out_label_list, preds_list),
-        "recall": recall_score(out_label_list, preds_list),
-        "f1": f1_score(out_label_list, preds_list),
-    }
-    """
-    
-    out_label_list = []
-    flat_preds_list = []
     preds_list = [[] for _ in range(out_label_ids.shape[0])]
     for i in range(out_label_ids.shape[0]):
         for j in range(out_label_ids.shape[1]):
             if out_label_ids[i, j] != pad_token_label_id:
                 # flat
-                out_label_list.append(out_label_ids[i][j])
-                flat_preds_list.append(preds[i][j])
+                #out_label_list.append(out_label_ids[i][j])
                 # nested
-                preds_list[i].append(preds[i][j])
-    results = {
-        "loss": eval_loss,
-        "precision": precision_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-        "recall": recall_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-        "f1": f1_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-    }
-    if mode != "test":
+                preds_list[i].append(pred_labels[i][j])
+
+    results = None
+    if mode == "test":
+        results = {
+            "loss": eval_loss,
+            "precision": precision_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
+            "recall": recall_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
+            "f1": best_fscore
+            }
         logger.info("***** Eval results *****")
         for key in sorted(results.keys()):
             logger.info("  %s = %s", key, str(results[key]))
+            
     return results, preds_list
 
 
@@ -373,9 +375,21 @@ def convert_features_to_dataset(features):
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+    all_pos_ids = torch.tensor([f.pos_ids for f in features], dtype=torch.long)
+    # external features
+    all_biasdown_vectors = torch.FloatTensor([f.biasdown_vectors for f in features])
+    all_biasup_vectors = torch.FloatTensor([f.biasup_vectors for f in features])
+    all_biasupdown_vectors = torch.FloatTensor([f.biasupdown_vectors for f in features])
+    all_corp_vectors = torch.FloatTensor([f.corp_vectors for f in features])
+    all_topic_vectors = torch.FloatTensor([f.topic_vectors for f in features])
+    all_verbnet_vectors = torch.FloatTensor([f.verbnet_vectors for f in features])
+    all_wordnet_vectors = torch.FloatTensor([f.wordnet_vectors for f in features])
     all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
-
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_pos_ids,
+                            all_biasdown_vectors, all_biasup_vectors, all_biasupdown_vectors,
+                            all_corp_vectors, all_topic_vectors, all_verbnet_vectors, all_wordnet_vectors,
+                            all_label_ids)
     return dataset
 
 
@@ -410,28 +424,60 @@ def load_and_cache_examples(args, tokenizer, pad_token_label_id, mode):
         features = torch.load(cached_features_file)
     else:
         logger.info("Creating features from dataset file at %s", args.data_dir)
-        examples = read_examples_from_file(args.data_dir, mode)
-        features = convert_examples_to_features(
-            examples,
-            args.max_seq_length,
-            tokenizer,
-            cls_token_at_end=bool(args.model_type in ["xlnet"]),
-            # xlnet has a cls token at the end
-            cls_token=tokenizer.cls_token,
-            cls_token_segment_id=2 if args.model_type in ["xlnet"] else 0,
-            sep_token=tokenizer.sep_token,
-            sep_token_extra=bool(args.model_type in ["roberta"]),
-            # roberta uses an extra separator b/w pairs of sentences,
-            # cf. github.com/pytorch/fairseq/commit/1684e166e3da03f5b600dbb7855cb98ddfcd0805
-            pad_on_left=bool(args.model_type in ["xlnet"]),
-            # pad on the left for xlnet
-            pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
-            pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
-            pad_token_label_id=pad_token_label_id,
-        )
+        # create pos vocab
+        pos_vocab = read_pos_tags(args.data_dir)
+        if args.dataset.lower() == "vua":
+            examples = read_vua_examples_from_file(args.data_dir, mode)
+            features = convert_vua_examples_to_features(
+                examples,
+                args.max_seq_length,
+                tokenizer,
+                cls_token_at_end=bool(args.model_type in ["xlnet"]),
+                # xlnet has a cls token at the end
+                cls_token=tokenizer.cls_token,
+                cls_token_segment_id=2 if args.model_type in ["xlnet"] else 0,
+                sep_token=tokenizer.sep_token,
+                sep_token_extra=bool(args.model_type in ["roberta"]),
+                # roberta uses an extra separator b/w pairs of sentences,
+                pad_on_left=bool(args.model_type in ["xlnet"]),
+                # pad on the left for xlnet
+                pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
+                pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
+                pos_vocab=pos_vocab,
+                pad_pos_id=0,
+                pad_token_label_id=pad_token_label_id,
+                pad_feature_val=0,
+                mode=mode
+            )           
+        elif args.dataset.lower() == "toefl":
+            examples = read_toefl_examples_from_file(args.data_dir, mode)
+            features = convert_toefl_examples_to_features(
+                examples,
+                args.max_seq_length,
+                tokenizer,
+                cls_token_at_end=bool(args.model_type in ["xlnet"]),
+                # xlnet has a cls token at the end
+                cls_token=tokenizer.cls_token,
+                cls_token_segment_id=2 if args.model_type in ["xlnet"] else 0,
+                sep_token=tokenizer.sep_token,
+                sep_token_extra=bool(args.model_type in ["roberta"]),
+                # roberta uses an extra separator b/w pairs of sentences,
+                pad_on_left=bool(args.model_type in ["xlnet"]),
+                # pad on the left for xlnet
+                pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
+                pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
+                pos_vocab=pos_vocab,
+                pad_pos_id=0,
+                pad_token_label_id=pad_token_label_id,
+                pad_feature_val=0,
+                mode=mode
+            )
+        else:
+            logger.info("Unrecognized dataset: {}".format(args.dataset))
         if args.local_rank in [-1, 0]:
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
+        sys.exit(0)
 
     if args.local_rank == 0 and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
@@ -455,16 +501,7 @@ def load_and_cache_examples(args, tokenizer, pad_token_label_id, mode):
         print("INVALID mode: {}".format(mode))
         sys.exit(0)
     
-    """
-    # Convert to Tensors and build dataset
-    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
-    all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-    """
     return dataset
-
 
 
 
@@ -500,6 +537,13 @@ def main():
         required=True,
         help="The output directory where the model predictions and checkpoints will be written.",
     )
+    parser.add_argument(
+        "--dataset",
+        default=None,
+        type=str,
+        required=True,
+        help="The dataset, VUA or TOEFL"
+    )
 
     # Other parameters
     parser.add_argument(
@@ -531,7 +575,7 @@ def main():
         "than this will be truncated, sequences shorter will be padded.",
     )
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
-    parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
+    #parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
     parser.add_argument("--do_predict", action="store_true", help="Whether to run predictions on the test set.")
     parser.add_argument(
         "--evaluate_during_training",
@@ -598,6 +642,13 @@ def main():
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
     parser.add_argument("--server_port", type=str, default="", help="For distant debugging.")
+    # feature parameters
+    #parser.add_argument("--use_init_embed", action="store_true", help="classifier compares initial and contextualized embedding")
+    parser.add_argument("--use_pos", action="store_true", help="classifier uses pos embedding")
+    parser.add_argument("--pos_vocab_size", type=int, default=43, help="Num of POS tags")
+    parser.add_argument("--pos_dim", type=int, default=8, help="Dimension of POS embedding")
+    parser.add_argument("--use_features", action="store_true", help="classifier uses external features")
+    parser.add_argument("--feature_dim", type=int, default=128, help="Dimension of external features")
     args = parser.parse_args()
 
     if (
@@ -661,8 +712,7 @@ def main():
     config = config_class.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
         num_labels=2,
-        cache_dir=args.cache_dir if args.cache_dir else None,
-    )
+        cache_dir=args.cache_dir if args.cache_dir else None)
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case,
@@ -673,7 +723,11 @@ def main():
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        )
+        use_pos=args.use_pos,
+        pos_vocab_size=args.pos_vocab_size,
+        pos_dim=args.pos_dim,
+        use_features=args.use_features,
+        feature_dim=args.feature_dim)
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
     model.to(args.device)
@@ -693,7 +747,13 @@ def main():
     # Predict/Test (without ground truth labels)
     if args.do_predict and args.local_rank in [-1, 0]:
         tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
-        model = RobertaForMetaphorDetection.from_pretrained(args.output_dir)
+        model = RobertaForMetaphorDetection.from_pretrained(args.output_dir,
+                                                            #use_init_embed=args.use_init_embed,
+                                                            use_pos=args.use_pos,
+                                                            pos_vocab_size=args.pos_vocab_size,
+                                                            pos_dim=args.pos_dim,
+                                                            use_features=args.use_features,
+                                                            feature_dim=args.feature_dim)
         model.to(args.device)
 
         test_dataset = load_and_cache_examples(args, tokenizer, pad_token_label_id, mode="test")
