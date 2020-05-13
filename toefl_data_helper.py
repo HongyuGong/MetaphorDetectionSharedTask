@@ -15,7 +15,7 @@ import os
 import sys
 import numpy as np
 import pickle
-from data_utils import InputExample, InputFeatures
+from data_utils import InputExample, InputFeatures, _parse_str_vector
 
 
 def read_toefl_examples_from_file(data_folder, mode):
@@ -221,7 +221,7 @@ def convert_toefl_examples_to_features(
         biasupdown_vectors += [[pad_feature_val] * feature_dim_dict['biasupdown']]
         corp_vectors += [[]]
         topic_vectors += [[pad_feature_val] * feature_dim_dict['topic']]
-        verbnet_vectors += []
+        verbnet_vectors += [[]]
         wordnet_vectors += [[pad_feature_val] * feature_dim_dict['wordnet']]
         label_ids += [pad_token_label_id]
         if sep_token_extra:

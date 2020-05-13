@@ -344,24 +344,28 @@ def evaluate(args, model, eval_dataset, pad_token_label_id, class_weights, mode)
                 out_label_ids = np.append(out_label_ids, batch[11].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
-    # preds: (batch_size, max_seq_len)
-    preds = np.argmax(preds, axis=2)
+    # pred_labels: (batch_size, max_seq_len)
+    pred_labels = np.argmax(preds, axis=2)
+    
+    out_label_list = []
+    flat_preds_list = []
     preds_list = [[] for _ in range(out_label_ids.shape[0])]
     for i in range(out_label_ids.shape[0]):
         for j in range(out_label_ids.shape[1]):
             if out_label_ids[i, j] != pad_token_label_id:
                 # flat
-                #out_label_list.append(out_label_ids[i][j])
-                # nested
+                out_label_list.append(out_label_ids[i][j])
+                flat_preds_list.append(pred_labels[i][j])
+                # nested                
                 preds_list[i].append(pred_labels[i][j])
 
     results = None
-    if mode == "test":
+    if mode != "test":
         results = {
             "loss": eval_loss,
             "precision": precision_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
             "recall": recall_score(out_label_list, flat_preds_list, average="binary", pos_label=1),
-            "f1": best_fscore
+            "f1": f1_score(out_label_list, flat_preds_list, average="binary", pos_label=1)
             }
         logger.info("***** Eval results *****")
         for key in sorted(results.keys()):
@@ -477,7 +481,6 @@ def load_and_cache_examples(args, tokenizer, pad_token_label_id, mode):
         if args.local_rank in [-1, 0]:
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
-        sys.exit(0)
 
     if args.local_rank == 0 and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache

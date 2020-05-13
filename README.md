@@ -88,12 +88,12 @@ python3 run_metaphor_detection.py
 --per_gpu_train_batch_size 6
 --per_gpu_eval_batch_size 18
 --learning_rate 2e-5
---num_train_epochs 4.0
+--num_train_epochs 5.0
 --warmup_steps 500
 --seed [SEED]
 --use_pos
 --pos_vocab_size 43
---pos_dim 8
+--pos_dim [POS_DIM]
 --use_features
 --feature_dim 696
 ```
@@ -108,6 +108,7 @@ python3 run_metaphor_detection.py
 
 * --use_features: whether to use external feature for classification
 
+* POS_DIM: dimension for part-of-speech tag embedding
 
 ### (2) Train TOEFL Model
 
@@ -125,12 +126,12 @@ python3 run_metaphor_detection.py
 --per_gpu_train_batch_size 6
 --per_gpu_eval_batch_size 18
 --learning_rate 2e-5
---num_train_epochs 4.0
+--num_train_epochs 5.0
 --warmup_steps 500
 --seed [SEED]
 --use_pos
 --pos_vocab_size 43
---pos_dim 8
+--pos_dim [POS_DIM]
 --use_features
 --feature_dim 215
 ```
@@ -145,6 +146,7 @@ python3 run_metaphor_detection.py
 
 * --use_features: whether to use external feature for classification
 
+* POS_DIM: dimension for part-of-speech tag embedding
 
 ## 4. Prediction
 
@@ -160,18 +162,15 @@ python3 run_metaphor_detection.py
 --max_seq_length 256
 --do_predict
 --do_lower_case
---per_gpu_train_batch_size 6
 --per_gpu_eval_batch_size 18
---learning_rate 2e-5
---num_train_epochs 4.0
---warmup_steps 500
---seed [SEED]
 --use_pos
 --pos_vocab_size 43
---pos_dim 8
+--pos_dim [POS_DIM]
 --use_features
 --feature_dim 696
 ```
+
+* The prediction file is saved in [OUTPUT_DIR]/VUA/model/test_labels.txt
 
 TOEFL prediction from a single model
 
@@ -183,31 +182,49 @@ python3 run_metaphor_detection.py
 --output_dir [OUTPUT_DIR]/TOEFL/model/
 --dataset TOEFL
 --max_seq_length 256
---do_train
---evaluate_during_training
+--do_predict
 --do_lower_case
---per_gpu_train_batch_size 6
 --per_gpu_eval_batch_size 18
---learning_rate 2e-5
---num_train_epochs 4.0
---warmup_steps 500
---seed [SEED]
 --use_pos
 --pos_vocab_size 43
---pos_dim 8
+--pos_dim [POS_DIM]
 --use_features
 --feature_dim 215
 ```
 
+* The prediction file is saved in [OUTPUT_DIR]/TOEFL/model/test_labels.txt
+
 ## 5. Emsemble Prediction
 
-Repeat step 4 to train multiple models using different random seeds. Ensemble method is adopted to make predictions by taking majority votes among multiple trained models. Put prediction outputs from multiple models into PRED_DIR/, and the ensemble method makes final predictions in FINAL_OUTPUT_DIR/.
+Repeat step 4 to train multiple models using different random seeds. Ensemble method is adopted to make predictions by taking majority votes among multiple trained models. Put prediction outputs from multiple models into RES_DIR/, and the ensemble method saves final predictions "ensemble_test_labels.txt" in RES_DIR/.
+
+### Ensemble VUA prediction
 
 ```bash
 python3 ensemble_test.py 
---data_dir [PRED_DIR]/
---output_dir [FINAL_OUTPUT_DIR]/
+--data_dir [DATA_DIR]/VUA/
+--res_dir [RES_DIR]/VUA/
 ```
+
+* DATA_DIR: the directory which contains test_ids.txt
+
+* RES_DIR: the directory to save prediction files
+
+
+### Ensemble VUA prediction
+
+```bash
+python3 ensemble_test.py 
+--data_dir [DATA_DIR]/TOEFL/
+--res_dir [RES_DIR]/TOEFL/
+```
+
+* DATA_DIR: the directory to save test_ids.txt
+
+* RES_DIR: the directory to save multiple prediction files
+
+
+
 
 If you have questions, please contact Hongyu Gong (hongyugong6@gmail.com).
 
