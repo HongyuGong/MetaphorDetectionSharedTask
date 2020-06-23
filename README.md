@@ -229,7 +229,22 @@ python3 ensemble_test.py
 If you have questions, please contact Hongyu Gong (hongyugong6@gmail.com).
 
 If you use our code, please cite our work:
-???
+
+Hongyu Gong, Kshitij Gupta, Akriti Jain and Suma Bhat "IlliniMet: Illinois System for Metaphor Detection with Contextual and Linguistic Information", in Proceedings of the Second Workshop on Figurative Language Processing 2020 (pp. 146--153).
+
+@inproceedings{gong-etal-2020-illinimet,
+    title = "{I}llini{M}et: {I}llinois System for Metaphor Detection with Contextual and Linguistic Information",
+    author = "Gong, Hongyu  and
+      Gupta, Kshitij  and
+      Jain, Akriti  and
+      Bhat, Suma",
+    booktitle = "Proceedings of the Second Workshop on Figurative Language Processing",
+    month = jul,
+    year = "2020",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/2020.figlang-1.21",
+    pages = "146--153"}
 
 
 
